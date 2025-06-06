@@ -63,10 +63,10 @@ fn test_crc_error() {
 #[cfg(feature = "use-crc")]
 fn test_crc_in_method() {
     use crc::{Crc, CRC_32_ISCSI};
-    use postcard::{to_slice_crc32, Result};
-    use serde::Serialize;
+    use postcard::{from_bytes_crc32, to_slice_crc32, Result};
+    use serde::{Deserialize, Serialize};
 
-    #[derive(Debug, Serialize)]
+    #[derive(Debug, Serialize, Deserialize, PartialEq)]
     pub struct Thing {
         value: u32,
     }
@@ -76,10 +76,16 @@ fn test_crc_in_method() {
             let crc = Crc::<u32>::new(&CRC_32_ISCSI);
             to_slice_crc32(self, buf, crc.digest())
         }
+        pub fn from_bytes<'a>(buf: &'a mut [u8]) -> Result<Self> {
+            let crc = Crc::<u32>::new(&CRC_32_ISCSI);
+            from_bytes_crc32(buf, crc.digest())
+        }
     }
 
     let buffer = &mut [0u8; 5];
     let thing = Thing { value: 42 };
     let slice = thing.to_bytes(buffer).unwrap();
     assert_eq!(slice, &[0x2A, 0xB7, 0xF5, 0x22, 0x19]);
+    let things2 = Thing::from_bytes(slice).unwrap();
+    assert_eq!(thing, things2);
 }

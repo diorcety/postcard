@@ -447,6 +447,7 @@ pub mod io {
 #[cfg_attr(docsrs, doc(cfg(feature = "use-crc")))]
 pub mod crc {
     use core::convert::TryInto;
+    use core::marker::PhantomData;
 
     use crc::Digest;
     use crc::Width;
@@ -460,31 +461,37 @@ pub mod crc {
     use crate::Result;
 
     /// Manages CRC modifications as a flavor.
-    pub struct CrcModifier<'de, B, W>
+    pub struct CrcModifier<'de, 'crc, B, W>
     where
         B: Flavor<'de>,
         W: Width,
     {
         flav: B,
-        digest: Digest<'de, W>,
+        digest: Digest<'crc, W>,
+        _phantom: PhantomData<&'de ()>,
     }
 
-    impl<'de, B, W> CrcModifier<'de, B, W>
+    impl<'de, 'crc, B, W> CrcModifier<'de, 'crc, B, W>
     where
         B: Flavor<'de>,
         W: Width,
     {
         /// Create a new Crc modifier Flavor.
-        pub fn new(bee: B, digest: Digest<'de, W>) -> Self {
-            Self { flav: bee, digest }
+        pub fn new(bee: B, digest: Digest<'crc, W>) -> Self {
+            Self {
+                flav: bee,
+                digest,
+                _phantom: PhantomData,
+            }
         }
     }
 
     macro_rules! impl_flavor {
         ($int:ty, $from_bytes:ident, $take_from_bytes:ident) => {
-            impl<'de, B> Flavor<'de> for CrcModifier<'de, B, $int>
+            impl<'de, 'crc, B> Flavor<'de> for CrcModifier<'de, 'crc, B, $int>
             where
                 B: Flavor<'de>,
+                'crc: 'de,
             {
                 type Remainder = B::Remainder;
                 type Source = B::Source;
@@ -540,9 +547,10 @@ pub mod crc {
 
             /// Deserialize a message of type `T` from a byte slice with a Crc. The unused portion (if any)
             /// of the byte slice is not returned.
-            pub fn $from_bytes<'a, T>(s: &'a [u8], digest: Digest<'a, $int>) -> Result<T>
+            pub fn $from_bytes<'a, 'crc, T>(s: &'a [u8], digest: Digest<'crc, $int>) -> Result<T>
             where
                 T: Deserialize<'a>,
+                'crc: 'a,
             {
                 let flav = CrcModifier::new(Slice::new(s), digest);
                 let mut deserializer = Deserializer::from_flavor(flav);
@@ -553,12 +561,13 @@ pub mod crc {
 
             /// Deserialize a message of type `T` from a byte slice with a Crc. The unused portion (if any)
             /// of the byte slice is returned for further usage
-            pub fn $take_from_bytes<'a, T>(
+            pub fn $take_from_bytes<'a, 'crc, T>(
                 s: &'a [u8],
-                digest: Digest<'a, $int>,
+                digest: Digest<'crc, $int>,
             ) -> Result<(T, &'a [u8])>
             where
                 T: Deserialize<'a>,
+                'crc: 'a,
             {
                 let flav = CrcModifier::new(Slice::new(s), digest);
                 let mut deserializer = Deserializer::from_flavor(flav);
